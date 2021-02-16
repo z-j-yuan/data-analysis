@@ -1,0 +1,121 @@
+#加载包
+import pandas as pd
+import numpy as np
+from pandas import Series,DataFrame
+import random 
+import xgboost as xgb
+import os
+import re
+import pydotplus
+import statsmodels.api as sm
+import pylab as pl
+from datetime import datetime
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score,confusion_matrix
+from sklearn.tree import DecisionTreeClassifier
+from sklearn import model_selection
+from sklearn.metrics import log_loss
+from sklearn import tree
+from IPython.display import Image
+import matplotlib.pyplot as plt
+from sklearn.metrics import roc_curve
+
+os.environ["PATH"] += os.pathsep + 'D:\\Program Files\\Graphviz2.38\\bin'
+#%% 
+
+#加载数据
+d = pd.read_excel('df11.xls')
+x = d.iloc[:,1:21]
+y = d[['ADE']]
+X_train,X_test,y_train,y_test = train_test_split(x , y , test_size=0.2 , random_state=1)
+#%%
+#GBDT建模
+import numpy as np
+from sklearn.ensemble import GradientBoostingClassifier
+gbdt = GradientBoostingClassifier(loss='deviance', learning_rate=0.2, n_estimators=50, subsample=1
+                                  , min_samples_split=2, min_samples_leaf=1, max_depth=5
+                                  , init=None, random_state=2, max_features=15
+                                  , verbose=0, max_leaf_nodes=4, warm_start=False
+                                  )
+y_gbdt=gbdt.fit(X_train, y_train)
+y_predict_probability = y_gbdt.predict_proba(X_test)
+
+#%%
+#LightGBM
+import pandas as pd
+import lightgbm as lgb
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import auc, accuracy_score, roc_auc_score, roc_curve
+from sklearn.model_selection import GridSearchCV
+
+import matplotlib.pyplot as plt
+
+gbm = lgb.LGBMClassifier(learning_rate = 0.15, metric = 'l1', 
+                        n_estimators = 200)
+
+
+y_lgbm=gbm.fit(X_train, y_train,
+        eval_set=[(X_test, y_test)],
+        eval_metric=['auc', 'binary_logloss'],
+early_stopping_rounds=5)
+y_lgbm_probability = y_lgbm.predict_proba(X_test)
+lgbm_fpr,lgbm_tpr, threshold = roc_curve(y_test, y_lgbm_probability[:,1])
+
+#%%
+#RF
+
+from sklearn.metrics import roc_auc_score
+from sklearn.metrics import classification_report
+from sklearn.ensemble import RandomForestClassifier
+from sklearn import tree
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import export_graphviz
+#from sklearn.externals.six import StringIO  
+from IPython.display import Image  
+import pydotplus 
+
+dtree = tree.DecisionTreeClassifier(
+    criterion='entropy',
+    #max_depth=3, # 定义树的深度, 可以用来防止过拟合
+    min_weight_fraction_leaf=0.01 # 定义叶子节点最少需要包含多少个样本(使用百分比表达), 防止过拟合
+    )
+# 训练
+dtree = dtree.fit(X_train,y_train)
+
+y_dtree = dtree.predict_proba(X_test)
+dtree_fpr,dtree_tpr, threshold = roc_curve(y_test, y_dtree[:,1])
+#%%
+#catboost
+from catboost import CatBoostClassifier
+cb_model_main = CatBoostClassifier(iterations=500,
+                             random_seed = 17, verbose = False)
+CB=cb_model_main.fit(X_train,y_train)
+
+y_CB_probability =CB.predict_proba(X_test)
+CB_fpr,CB_tpr, threshold = roc_curve(y_test, y_CB_probability[:,1])
+#%%
+#图
+import pandas as pd
+df_importance_21=pd.read_excel('importance.xls')
+names=list(df_importance_21['Variable Name'])
+index=np.arange(len(names))
+plt.figure(figsize=(18,8))
+plt.bar(index,df_importance_21['Importance Sore'],width=0.7,color=(0.32941176470588235, 0.7294117647058823, 0.7490196078431373),tick_label=names)
+plt.xticks(rotation=75)
+plt.ylabel('Importance Score')
+plt.xlabel('Variable Name')
+for a, b in zip(index, df_importance_21['Importance Sore']):
+    plt.text(a, b+0.002, '%.4f' % b, ha='center', va='bottom', fontsize=10)
+plt.title('Important variables score bar chart')
+
+plt.xticks(size = 9,rotation = 0)
+plt.savefig('Important variables.png')
+plt.show()
+#shap图
+import shap
+
+explainer = shap.TreeExplainer(gbdt)
+shap_values = explainer.shap_values(X_train)
+shap.summary_plot(shap_values, X_train)
